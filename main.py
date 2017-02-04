@@ -9,7 +9,7 @@ from datetime import timedelta
 cSec = 'GoogleApi'
 
 # Read in the config file
-confPath = os.path.dirname(os.path.realpath(__file__)) + '/config/config.ini'
+confPath = os.path.dirname(os.path.realpath(__file__)) + '/ignore/config/config.ini'
 config = configparser.ConfigParser()
 config.read(confPath)
 
@@ -44,10 +44,19 @@ def get_playlists_for_channel(id):
     return json.loads(response.text)['items']
 
 
-def get_playlist_from_list(name, list):
+def get_uploads_list(id):
+    """Returns the ID of the Uploads playlist of a channel.
+    """
+    param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'id': id}
+    response = requests.get(cget(cSec, 'ChannelAccess'), params=param)
+    return json.loads(response.text)['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+
+
+def get_playlist_from_list(name, id):
     """Returns a specific playlist from a list of playlists
     """
-    for i in list:
+    __list = get_playlists_for_channel(id)
+    for i in __list:
         if i['snippet']['title'].lower() == name:
             return [i['id']]
 
@@ -64,7 +73,7 @@ def get_all_playlist_ids_from_list(list):
     return out
 
 
-def get_video_id_for_playlist(id):
+def get_video_ids_for_playlist(id):
     """Returns all IDs of all video items in a given list.
     """
     num = int(cget(cSec, 'maxResults'))
@@ -116,18 +125,14 @@ ch_id = get_channel_id(ch)
 
 
 # Retrieve Playlist ID
-pl_all = get_playlists_for_channel(ch_id)
-
 if pl != '':
-    pl_id = get_playlist_from_list(pl, pl_all)
+    pl_id = get_playlist_from_list(pl, ch_id)
 else:
-    pl_id = get_all_playlist_ids_from_list(pl_all)
+    pl_id = get_uploads_list(ch_id)
 
 
 # Retrieve all Video IDs for the Playlist ID
-v_item = []
-for id in pl_id:
-    v_item.extend(get_video_id_for_playlist(id))
+v_item = get_video_ids_for_playlist(pl_id)
 
 
 # Retrieve the video data for every video
