@@ -5,7 +5,6 @@ import os
 import json
 import isodate
 from datetime import timedelta
-import math
 
 cSec = 'GoogleApi'
 
@@ -14,80 +13,139 @@ confPath = os.path.dirname(os.path.realpath(__file__)) + '/config/config.ini'
 config = configparser.ConfigParser()
 config.read(confPath)
 
+
 def cget(section, name):
-    """Returns a value with a given name from the configuration file."""
+    """Returns a value with a given name from the configuration file.
+    """
     return config[section][name]
 
-# Read in the channel and optionally the playlist name
-channel = sys.argv[1].lower()
-if len(sys.argv) == 3:
-    playlist = sys.argv[2].lower()
 
-# Retrieve Channel ID
-param = {'key': cget(cSec, 'Key'), 'part': 'id', 'forUsername': channel}
-response = requests.get(cget(cSec, 'ChannelAccess'), params=param)
-out = json.loads(response.text)
+def get_channel_id(name):
+    """Returns Youtube's ID for a channel with a given name.
+    Only one ID is returned as it is assumed that Youtube channels
+    have to have a unique name. Therefore, only one channel should be found
+    """
+    param = {'key': cget(cSec, 'Key'), 'part': 'id', 'forUsername': name}
+    response = requests.get(cget(cSec, 'ChannelAccess'), params=param)
+    out = json.loads(response.text)['items']
 
-if len(out['items']) == 0:
-    print('No Youtube Channel with the name ' + channel + ' could be found.')
+    if len(out) == 0:
+        print('No Youtube Channel with the name ' + name + ' could be found.')
+        exit()
+
+    return out[0]['id']
+
+
+def get_playlists_for_channel(id):
+    """Returns all playlists of a given channel id
+    """
+    param = {'key': cget(cSec, 'Key'), 'part': 'id, snippet', 'channelId': id}
+    response = requests.get(cget(cSec, 'PlaylistAccess'), params=param)
+    return json.loads(response.text)['items']
+
+
+def get_playlist_from_list(name, list):
+    """Returns a specific playlist from a list of playlists
+    """
+    for i in list:
+        if i['snippet']['title'].lower() == name:
+            return [i['id']]
+
+    print('No Playlist with the name ' + name + ' could be found.')
     exit()
 
-channelId = out['items'][0]['id']
+
+def get_all_playlist_ids_from_list(list):
+    """Returns all IDs of all playlists in a given list.
+    """
+    out = []
+    for i in list:
+        out.append(i['id'])
+    return out
+
+
+def get_video_id_for_playlist(id):
+    """Returns all IDs of all video items in a given list.
+    """
+    num = int(cget(cSec, 'maxResults'))
+    param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'playlistId': id, 'maxResults': num}
+    response = requests.get(cget(cSec, 'PlaylistItemsAccess'), params=param)
+    out = json.loads(response.text)
+
+    items = out['items']
+    total = int(out['pageInfo']['totalResults'])
+
+    if total > num:
+        fetched = num
+        while fetched < total:
+            param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'playlistId': id, 'maxResults': num,
+                     'pageToken': out['nextPageToken']}
+            response = requests.get(cget(cSec, 'PlaylistItemsAccess'), params=param)
+            out = json.loads(response.text)
+            items.extend(out['items'])
+            fetched += num
+
+    return items
+
+
+def get_video_data_from_ids(id):
+    """Retrieves and returns the data of a list of video IDs.
+    """
+    data = []
+    fetched = 0
+    num = int(cget(cSec, 'maxResults'))
+    while fetched < len(id):
+        idx_end = fetched + num if fetched + num < len(id) else len(id)
+        param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'id': ", ".join(id[fetched:idx_end])}
+        response = requests.get(cget(cSec, 'VideoAccess'), params=param)
+        data.extend(json.loads(response.text)['items'])
+        fetched += num
+
+    return data
+
+
+# Read in the channel and optionally the playlist name
+ch = sys.argv[1].lower()
+pl = ''
+if len(sys.argv) == 3:
+    pl = sys.argv[2].lower()
+
+
+# Retrieve the channel ID
+ch_id = get_channel_id(ch)
+
 
 # Retrieve Playlist ID
-param = {'key': cget(cSec, 'Key'), 'part': 'id, snippet', 'channelId': channelId}
-response = requests.get(cget(cSec, 'PlaylistAccess'), params=param)
-out = json.loads(response.text)
+pl_all = get_playlists_for_channel(ch_id)
 
-if len(out['items']) == 0:
-    print('No Playlist with the name ' + playlist + ' could be found.')
-    exit()
+if pl != '':
+    pl_id = get_playlist_from_list(pl, pl_all)
+else:
+    pl_id = get_all_playlist_ids_from_list(pl_all)
 
-for item in out['items']:
-    if item['snippet']['title'].lower() == playlist:
-        playlistId = item['id']
-        break
 
 # Retrieve all Video IDs for the Playlist ID
-maxResults = int(cget(cSec, 'maxResults'))
-param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'playlistId': playlistId, 'maxResults': maxResults}
-response = requests.get(cget(cSec, 'PlaylistItemsAccess'), params=param)
-out = json.loads(response.text)
+v_item = []
+for id in pl_id:
+    v_item.extend(get_video_id_for_playlist(id))
 
-videoItems = out['items']
-totalResults = int(out['pageInfo']['totalResults'])
-
-if totalResults > maxResults:
-    resultsFetched = maxResults
-    while resultsFetched < totalResults:
-        param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'playlistId': playlistId, 'maxResults': maxResults, 'pageToken': out['nextPageToken']}
-        response = requests.get(cget(cSec, 'PlaylistItemsAccess'), params=param)
-        out = json.loads(response.text)
-        videoItems.extend(out['items'])
-        resultsFetched += maxResults
 
 # Retrieve the video data for every video
-videoId = []
-for item in videoItems:
-    videoId.append(item['contentDetails']['videoId'])
+v_id = []
+for item in v_item:
+    v_id.append(item['contentDetails']['videoId'])
 
-videoData = []
-resultsFetched = 0
-while resultsFetched < totalResults:
-    endIndex = resultsFetched + maxResults if resultsFetched + maxResults < totalResults else totalResults
-    param = {'key': cget(cSec, 'Key'), 'part': 'contentDetails', 'id': ", ".join(videoId[resultsFetched:endIndex])}
-    response = requests.get(cget(cSec, 'VideoAccess'), params=param)
-    videoData.extend(json.loads(response.text)['items'])
-    resultsFetched += maxResults
+v_data = get_video_data_from_ids(v_id)
+
 
 # Add the durations of the videos together
-totalDuration = timedelta()
-for video in videoData:
-    totalDuration += isodate.parse_duration(video['contentDetails']['duration'])
+dur = timedelta()
+for v in v_data:
+    dur += isodate.parse_duration(v['contentDetails']['duration'])
 
-m, s = divmod(totalDuration.total_seconds(), 60)
+m, s = divmod(dur.total_seconds(), 60)
 h, m = divmod(m, 60)
-totalTime = "%d Hours, %02d Minutes, and %02d Seconds" % (h, m, s)
+t = "%d Hours, %02d Minutes, and %02d Seconds" % (h, m, s)
 
-print("The total playtime of the selected videos is: " + totalTime)
+print("The total playtime of the selected videos is: " + t)
 
