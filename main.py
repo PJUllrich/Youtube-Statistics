@@ -9,7 +9,7 @@ from datetime import timedelta
 cSec = 'GoogleApi'
 
 # Read in the config file
-confPath = os.path.dirname(os.path.realpath(__file__)) + '/ignore/config/config.ini'
+confPath = os.path.dirname(os.path.realpath(__file__)) + '/config/config.ini'
 config = configparser.ConfigParser()
 config.read(confPath)
 
