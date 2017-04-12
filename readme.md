@@ -14,5 +14,5 @@ Optionally, if you only want to sum up a specific playlist, call:
 python3.5 main.py caseyneistat vlog
 ~~~~
 
-I tried to write the python code according to the [PEP8][https://www.python.org/dev/peps/pep-0008/] styleguide.
+I tried to write the python code according to the [PEP8](https://www.python.org/dev/peps/pep-0008/) styleguide.
 Please let me know, if you have a comment or improvement idea. 
